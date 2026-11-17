@@ -1,0 +1,340 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Auth.js models. Field names match @auth/prisma-adapter.
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model OrgGroup {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  kind        String
+  minManning  Int?
+  employees   Employee[]
+  blackouts   Blackout[]
+}
+
+model Employee {
+  id                   String           @id
+  email                String           @unique
+  passwordHash         String?
+  name                 String
+  shortName            String
+  title                String
+  role                 Role             @default(EMPLOYEE)
+  category             Category
+  employmentActCovered Boolean          @default(true)
+  policyGroup          String
+  workPattern          WorkPattern
+  joinedOn             DateTime         @db.Date
+  approverId           String?
+  secondApproverId     String?
+  groupId              String
+  active               Boolean          @default(true)
+  pdpaAcceptedAt       DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  group                OrgGroup         @relation(fields: [groupId], references: [id])
+  approver             Employee?        @relation("Reports", fields: [approverId], references: [id])
+  reports              Employee[]       @relation("Reports")
+  secondApprover       Employee?        @relation("SecondReports", fields: [secondApproverId], references: [id])
+  secondReports        Employee[]       @relation("SecondReports")
+  children             Child[]
+  requests             LeaveRequest[]   @relation("Applicant")
+  credits              OilCredit[]
+  openingBalances      OpeningBalance[]
+  delegationsFrom      Delegation[]     @relation("Delegator")
+  delegationsTo        Delegation[]     @relation("Delegate")
+  notifications        Notification[]
+}
+
+model Child {
+  id                     String   @id @default(cuid())
+  employeeId             String
+  name                   String
+  dateOfBirth            DateTime @db.Date
+  singaporeCitizen       Boolean
+  citizenshipObtainedOn  DateTime? @db.Date
+  employee               Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model PublicHoliday {
+  date     DateTime @id @db.Date
+  name     String
+  observed Boolean  @default(false)
+}
+
+model PolicyVersion {
+  id            String       @id @default(cuid())
+  name          String
+  policyGroup   String
+  effectiveFrom DateTime     @db.Date
+  effectiveTo   DateTime?    @db.Date
+  status        PolicyStatus
+  rules         Json
+  changeNote    String
+  createdAt     DateTime     @default(now())
+  createdById   String?
+  requests      LeaveRequest[]
+}
+
+model LeaveRequest {
+  id              String        @id
+  employeeId      String
+  type            LeaveType
+  unit            LeaveUnit
+  startDate       DateTime      @db.Date
+  endDate         DateTime      @db.Date
+  hours           Decimal       @db.Decimal(6, 2)
+  days            Decimal       @db.Decimal(6, 2)
+  reason          String        @default("")
+  fileName        String        @default("")
+  status          RequestStatus
+  pendingAction   PendingAction @default(NONE)
+  band            String?
+  warnings        String[]
+  year            Int
+  policyVersionId String?
+  submittedAt     DateTime
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  employee        Employee      @relation("Applicant", fields: [employeeId], references: [id])
+  policyVersion   PolicyVersion? @relation(fields: [policyVersionId], references: [id])
+  steps           ApprovalStep[]
+  trail           LeaveTrail[]
+  documents       Document[]
+
+  @@index([employeeId, status])
+  @@index([status, startDate])
+}
+
+model ApprovalStep {
+  id         String     @id @default(cuid())
+  requestId  String
+  level      Int
+  approverId String?
+  status     StepStatus
+  actedAt    DateTime?
+  request    LeaveRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, level])
+}
+
+model LeaveTrail {
+  id        String       @id @default(cuid())
+  requestId String
+  at        DateTime
+  actorId   String?
+  actorName String
+  action    String
+  note      String       @default("")
+  request   LeaveRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+}
+
+model Document {
+  id             String       @id @default(cuid())
+  requestId      String
+  fileName       String
+  mimeType       String
+  sizeBytes      Int
+  storageKey     String       @unique
+  kind           String
+  uploadedAt     DateTime     @default(now())
+  uploadedById   String
+  retentionUntil DateTime     @db.Date
+  request        LeaveRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+}
+
+model OilCredit {
+  id          String    @id @default(cuid())
+  employeeId  String
+  days        Decimal   @db.Decimal(6, 2)
+  workedOn    DateTime  @db.Date
+  reason      String
+  expiresOn   DateTime? @db.Date
+  createdById String
+  createdAt   DateTime  @default(now())
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+}
+
+model OpeningBalance {
+  id          String    @id @default(cuid())
+  employeeId  String
+  year        Int
+  leaveType   LeaveType
+  carriedDays Decimal   @db.Decimal(6, 2)
+  note        String    @default("")
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, year, leaveType])
+}
+
+model Blackout {
+  id          String       @id @default(cuid())
+  startDate   DateTime     @db.Date
+  endDate     DateTime     @db.Date
+  scopeAll    Boolean      @default(false)
+  groupId     String?
+  mode        BlackoutMode
+  label       String
+  createdById String
+  createdAt   DateTime     @default(now())
+  group       OrgGroup?    @relation(fields: [groupId], references: [id])
+}
+
+model Delegation {
+  id          String   @id @default(cuid())
+  fromId      String
+  toId        String
+  startDate   DateTime @db.Date
+  endDate     DateTime @db.Date
+  createdAt   DateTime @default(now())
+  delegator   Employee @relation("Delegator", fields: [fromId], references: [id])
+  delegate    Employee @relation("Delegate", fields: [toId], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  at         DateTime @default(now())
+  actorId    String?
+  actorName  String
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+
+  @@index([entityType, entityId])
+  @@index([at])
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  employeeId String?
+  toEmail    String
+  subject    String
+  body       String   @db.Text
+  channel    String
+  status     String
+  error      String?
+  createdAt  DateTime @default(now())
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+}
+
+model Counter {
+  id    String @id
+  value Int
+}
+
+enum Role {
+  EMPLOYEE
+  MANAGER
+  HR_ADMIN
+}
+
+enum Category {
+  SHORE
+  CREW
+}
+
+enum WorkPattern {
+  FIVE_DAY
+  SIX_DAY
+}
+
+enum LeaveType {
+  AL
+  SL
+  HL
+  CCL
+  OIL
+  NPL
+  ML
+  PL
+  SPL
+}
+
+enum LeaveUnit {
+  FULL
+  AM
+  PM
+  HOURS
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum StepStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  WAITING
+}
+
+enum PendingAction {
+  NONE
+  CANCEL
+}
+
+enum BlackoutMode {
+  BLOCK
+  WARN
+}
+
+enum PolicyStatus {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+}

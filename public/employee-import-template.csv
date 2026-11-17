@@ -1,0 +1,2 @@
+employee_id,email,name,short_name,title,role,category,group,joined_on,approver_id,work_pattern,employment_act_covered,policy_group,child_name,child_dob,child_citizen,al_carry_days,al_carry_year,password
+E99,new.hire@gmt.example,New Hire,New,Deck Cadet,EMPLOYEE,CREW,MT Marina Star,2026-11-01,E05,SIX_DAY,false,CREW,,,,,0,2026,
